@@ -8,7 +8,6 @@ Einfache Web-App (PWA) zum Mitschreiben der Übungen während des Trainings.
 - Anzeige des letzten Satzes pro Übung, Gewicht wird vorbefüllt
 - Kalender: Trainingstage sind grün markiert, Tippen auf einen Tag zeigt die Sätze
 - Statistik: Trainings und Sätze pro Monat
-- Erinnerung „Ab zum Training du Tschuksel!“, wenn mehr als 2 Tage nichts eingetragen wurde
 - Körpergewicht: alle 2 Wochen eintragen, mit Erinnerung, Verlaufs-Diagramm und Liste
 - Suchfeld, um Übungen schnell zu finden
 - Plus/Minus-Knöpfe für schnelle Eingabe im Gym

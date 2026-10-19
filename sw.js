@@ -1,5 +1,5 @@
 // Cached die App-Dateien, damit sie auch ohne Internet im Gym funktioniert.
-const CACHE = 'gym-tracker-v10';
+const CACHE = 'gym-tracker-v9';
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'manifest.json', 'icon.svg'];
 
 self.addEventListener('install', e => {
