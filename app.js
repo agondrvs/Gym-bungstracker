@@ -340,7 +340,7 @@ function renderExercises() {
   state.exercises.forEach(ex => {
     const count = state.sets.filter(s => s.exerciseId === ex.id).length;
     const li = document.createElement('li');
-    li.innerHTML = `<div class="list-main"><div>${escapeHtml(ex.name)}</div><span>${ex.type === 'bodyweight' ? 'Körpergewicht + Zusatzgewicht' : 'Mit Gewicht'} · ${count} ${count === 1 ? 'Satz' : 'Sätze'}</span></div>`;
+    li.innerHTML = `<div class="list-main"><div>${escapeHtml(ex.name)}</div><span>${ex.type === 'bodyweight' ? 'Körpergewicht + Zusatzgewicht' : 'Gym Gewicht'} · ${count} ${count === 1 ? 'Satz' : 'Sätze'}</span></div>`;
     const del = document.createElement('button');
     del.className = 'icon-btn';
     del.setAttribute('aria-label', 'Übung entfernen');
