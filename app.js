@@ -403,3 +403,16 @@ if ('serviceWorker' in navigator) {
 
 // iPhone ignoriert teilweise die Zoom-Sperre: Zwei-Finger-Zoom zusätzlich abfangen
 document.addEventListener('gesturestart', e => e.preventDefault());
+
+// iPhone zoomt beim schnellen Doppeltippen trotzdem rein. Deshalb wird der zweite Tipp
+// abgefangen und selbst als normaler Tipp ausgeführt (z.B. zweimal + zählt weiter +2).
+let lastTouchEnd = 0;
+document.addEventListener('touchend', e => {
+  const now = Date.now();
+  if (now - lastTouchEnd <= 350) {
+    e.preventDefault();
+    const el = e.target.closest('button, input, textarea, select, a');
+    if (el) el.matches('input, textarea, select') ? el.focus() : el.click();
+  }
+  lastTouchEnd = now;
+}, { passive: false });

@@ -1,5 +1,5 @@
 // Cached die App-Dateien, damit sie auch ohne Internet im Gym funktioniert.
-const CACHE = 'gym-tracker-v5';
+const CACHE = 'gym-tracker-v6';
 const FILES = ['./', 'index.html', 'style.css', 'app.js', 'manifest.json', 'icon.svg'];
 
 self.addEventListener('install', e => {
@@ -12,10 +12,11 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
-// Netzwerk zuerst (für Updates), bei Offline aus dem Cache
+// Netzwerk zuerst (für Updates), bei Offline aus dem Cache.
+// cache: 'no-cache' fragt immer beim Server nach, damit neue Versionen sofort ankommen.
 self.addEventListener('fetch', e => {
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: 'no-cache' })
       .then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy));
