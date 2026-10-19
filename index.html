@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <title>Gym Tracker</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Gym Tracker</h1>
+  </header>
+
+  <main>
+    <!-- Training -->
+    <section id="view-training" class="view active">
+      <div class="card">
+        <label for="exercise-select">Übung</label>
+        <select id="exercise-select"></select>
+        <p id="last-info" class="muted"></p>
+
+        <div class="row">
+          <div class="field">
+            <label for="reps-input">Wiederholungen</label>
+            <input id="reps-input" type="number" inputmode="numeric" min="1" placeholder="z.B. 10">
+          </div>
+          <div class="field">
+            <label for="weight-input" id="weight-label">Gewicht (kg)</label>
+            <input id="weight-input" type="number" inputmode="decimal" step="0.5" placeholder="0">
+          </div>
+        </div>
+        <button id="add-set-btn" class="primary">Satz speichern</button>
+      </div>
+
+      <h2>Heute</h2>
+      <div id="today-list"></div>
+    </section>
+
+    <!-- Verlauf -->
+    <section id="view-history" class="view">
+      <label for="history-filter">Filter</label>
+      <select id="history-filter"></select>
+      <div id="history-list"></div>
+    </section>
+
+    <!-- Übungen -->
+    <section id="view-exercises" class="view">
+      <div class="card">
+        <label for="new-exercise-name">Neue Übung</label>
+        <input id="new-exercise-name" type="text" placeholder="z.B. Bankdrücken">
+        <label for="new-exercise-type">Art</label>
+        <select id="new-exercise-type">
+          <option value="bodyweight">Körpergewicht (+ Zusatzgewicht)</option>
+          <option value="weight">Mit Gewicht (Hantel, Kabel, Maschine)</option>
+        </select>
+        <button id="add-exercise-btn" class="primary">Übung hinzufügen</button>
+      </div>
+      <ul id="exercise-list" class="list"></ul>
+
+      <div class="card">
+        <h2>Backup</h2>
+        <p class="muted">Deine Daten sind nur auf diesem Gerät gespeichert. Exportiere sie ab und zu.</p>
+        <div class="row">
+          <button id="export-btn">Exportieren</button>
+          <button id="import-btn">Importieren</button>
+        </div>
+        <input id="import-file" type="file" accept="application/json" hidden>
+      </div>
+    </section>
+  </main>
+
+  <nav>
+    <button data-view="training" class="active">Training</button>
+    <button data-view="history">Verlauf</button>
+    <button data-view="exercises">Übungen</button>
+  </nav>
+
+  <script src="app.js"></script>
+</body>
+</html>
