@@ -123,6 +123,42 @@
         <input id="import-file" type="file" accept="application/json" hidden>
       </div>
     </section>
+
+    <!-- ===== Körpergewicht ===== -->
+    <section id="view-body" class="view">
+      <header class="page-header">
+        <p class="eyebrow">Fortschritt</p>
+        <h1>Körpergewicht</h1>
+      </header>
+
+      <div class="reminder" id="body-reminder"></div>
+
+      <div class="card">
+        <div class="stepper">
+          <span class="stepper-label">Gewicht (kg)</span>
+          <div class="stepper-control">
+            <button class="step-btn" data-target="body-input" data-step="-0.1" aria-label="Weniger">−</button>
+            <input id="body-input" type="number" inputmode="decimal" step="0.1" min="0" value="75">
+            <button class="step-btn" data-target="body-input" data-step="0.1" aria-label="Mehr">+</button>
+          </div>
+        </div>
+        <label class="field-label body-date-label" for="body-date">Datum</label>
+        <input id="body-date" class="text-input" type="date">
+        <button id="add-body-btn" class="btn-primary body-save">Gewicht speichern</button>
+      </div>
+
+      <div class="stats" id="body-stats"></div>
+
+      <div class="card chart-card" id="body-chart-card">
+        <h2 class="chart-title">Verlauf</h2>
+        <div class="chart" id="body-chart"></div>
+      </div>
+
+      <h3 class="section-title">Alle Messungen</h3>
+      <div class="card list-card" id="body-list-card">
+        <ul id="body-list" class="list"></ul>
+      </div>
+    </section>
   </main>
 
   <nav class="tabbar">
@@ -133,6 +169,10 @@
     <button data-view="calendar">
       <svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
       <span>Kalender</span>
+    </button>
+    <button data-view="body">
+      <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M8 9a5 5 0 0 1 8 0M12 9l1.5-2"/></svg>
+      <span>Körper</span>
     </button>
     <button data-view="exercises">
       <svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r=".6"/><circle cx="4" cy="12" r=".6"/><circle cx="4" cy="18" r=".6"/></svg>

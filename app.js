@@ -32,6 +32,8 @@ function loadState() {
 }
 
 let state = loadState();
+// Ältere Daten haben noch keine Körpergewicht-Liste
+state.bodyweights ??= []; // { id, date: 'JJJJ-MM-TT', kg }
 const save = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 save();
 
@@ -188,6 +190,7 @@ document.querySelectorAll('.step-btn').forEach(btn => {
     let value = (parseFloat(input.value) || 0) + parseFloat(btn.dataset.step);
     if (input === repsInput) value = Math.max(1, value);
     if (input === weightInput) value = Math.max(0, value); // Gewicht nie unter 0 kg
+    if (input === bodyInput) value = Math.max(0, Math.round(value * 10) / 10);
     input.value = Math.round(value * 100) / 100;
   });
 });
@@ -361,6 +364,189 @@ function renderExercises() {
   });
 }
 
+// ---------- Körpergewicht ----------
+const BODY_INTERVAL_DAYS = 14; // Erinnerung: alle zwei Wochen wiegen
+const ICON_SCALE = '<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><path d="M8 9a5 5 0 0 1 8 0M12 9l1.5-2"/></svg>';
+const bodyInput = $('#body-input');
+const bodyDate = $('#body-date');
+bodyDate.value = todayKey();
+
+const sortedBody = () => [...state.bodyweights].sort((a, b) => a.date.localeCompare(b.date));
+const daysBetween = (a, b) => Math.round((keyToDate(b) - keyToDate(a)) / 86400000);
+const round1 = n => Math.round(n * 10) / 10;
+const fmtKg = kg => `${fmtNum(round1(kg))} kg`;
+const fmtDiff = d => {
+  const r = round1(d);
+  return r === 0 ? '±0 kg' : `${r > 0 ? '+' : '−'}${fmtNum(Math.abs(r))} kg`;
+};
+
+// Letztes Gewicht als Startwert ins Eingabefeld
+if (state.bodyweights.length) bodyInput.value = sortedBody().at(-1).kg;
+
+bodyInput.addEventListener('change', () => {
+  if (parseFloat(String(bodyInput.value).replace(',', '.')) < 0) bodyInput.value = 0;
+});
+
+$('#add-body-btn').addEventListener('click', () => {
+  const kg = round1(parseFloat(String(bodyInput.value).replace(',', '.')) || 0);
+  const date = bodyDate.value || todayKey();
+  if (kg <= 0) return toast('Bitte ein Gewicht eingeben');
+  if (date > todayKey()) return toast('Das Datum liegt in der Zukunft');
+  // Pro Tag nur eine Messung: gleicher Tag wird überschrieben
+  const existing = state.bodyweights.find(b => b.date === date);
+  if (existing) existing.kg = kg;
+  else state.bodyweights.push({ id: uid(), date, kg });
+  save();
+  toast(existing ? 'Gewicht aktualisiert' : 'Gewicht gespeichert');
+  bodyDate.value = todayKey();
+  render();
+});
+
+function renderBodyReminder(last) {
+  const el = $('#body-reminder');
+  let title, text, due = true;
+  if (!last) {
+    title = 'Trag dein Gewicht ein';
+    text = 'Danach erinnert dich die App alle 2 Wochen';
+  } else {
+    const since = daysBetween(last.date, todayKey());
+    const left = BODY_INTERVAL_DAYS - since;
+    if (left <= 0) {
+      title = 'Zeit zum Wiegen!';
+      text = `Letzte Messung vor ${since} Tagen`;
+    } else {
+      due = false;
+      const next = keyToDate(last.date);
+      next.setDate(next.getDate() + BODY_INTERVAL_DAYS);
+      title = `Nächste Messung in ${left} ${left === 1 ? 'Tag' : 'Tagen'}`;
+      text = formatDateLong(dateKey(next));
+    }
+  }
+  el.className = 'reminder' + (due ? ' due' : '');
+  el.innerHTML = `${ICON_SCALE}<div><b>${title}</b><span>${text}</span></div>`;
+}
+
+// Liniendiagramm als SVG. Eine Linie, darunter eine leichte Fläche, Tippen zeigt den Wert.
+function renderBodyChart(entries) {
+  const box = $('#body-chart');
+  box.innerHTML = '';
+  if (entries.length < 2) {
+    box.innerHTML = '<p class="chart-empty">Ab 2 Messungen siehst du hier deinen Verlauf</p>';
+    return;
+  }
+  const W = Math.max(260, $('main').clientWidth - 32 - 38);
+  const H = 190;
+  const pad = { left: 34, right: 50, top: 44, bottom: 24 };
+  const plotW = W - pad.left - pad.right;
+  const plotH = H - pad.top - pad.bottom;
+
+  // Saubere Skala (z.B. 74, 75, 76) mit höchstens 4 Abschnitten
+  const values = entries.map(e => e.kg);
+  const min = Math.min(...values), max = Math.max(...values);
+  const step = [0.5, 1, 2, 5, 10, 20].find(s => (Math.ceil(max / s) - Math.floor(min / s)) <= 4) || 50;
+  let lo = Math.floor(min / step) * step;
+  let hi = Math.ceil(max / step) * step;
+  if (hi === lo) { lo -= step; hi += step; }
+
+  const t0 = keyToDate(entries[0].date).getTime();
+  const t1 = keyToDate(entries.at(-1).date).getTime();
+  const x = e => pad.left + ((keyToDate(e.date).getTime() - t0) / (t1 - t0)) * plotW;
+  const y = kg => pad.top + (1 - (kg - lo) / (hi - lo)) * plotH;
+  const pts = entries.map(e => ({ e, x: x(e), y: y(e.kg) }));
+  const baseY = pad.top + plotH;
+
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Verlauf Körpergewicht">`;
+  for (let v = lo; v <= hi + 1e-9; v += step) {
+    const gy = y(v);
+    svg += `<line class="grid" x1="${pad.left}" x2="${W - pad.right}" y1="${gy}" y2="${gy}"/>`;
+    svg += `<text class="axis-text" x="${pad.left - 8}" y="${gy + 4}" text-anchor="end">${fmtNum(round1(v))}</text>`;
+  }
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${p.x},${p.y}`).join('');
+  svg += `<path class="area" d="${line}L${pts.at(-1).x},${baseY}L${pts[0].x},${baseY}Z"/>`;
+  svg += `<path class="line" d="${line}"/>`;
+  svg += `<line class="cursor" id="chart-cursor" y1="${pad.top}" y2="${baseY}" visibility="hidden"/>`;
+  const showAllDots = pts.length <= 30;
+  pts.forEach((p, i) => {
+    if (showAllDots || i === pts.length - 1) svg += `<circle class="dot" cx="${p.x}" cy="${p.y}" r="4"/>`;
+  });
+  svg += `<circle class="dot" id="chart-active" r="5.5" visibility="hidden"/>`;
+  const end = pts.at(-1);
+  svg += `<text class="end-text" x="${end.x + 10}" y="${end.y + 4}">${fmtNum(round1(end.e.kg))}</text>`;
+  svg += `<text class="axis-text" x="${pad.left}" y="${H - 4}">${formatDateShort(entries[0].date)}</text>`;
+  svg += `<text class="axis-text" x="${W - pad.right}" y="${H - 4}" text-anchor="end">${formatDateShort(entries.at(-1).date)}</text>`;
+  svg += '</svg><div class="chart-tip" hidden></div>';
+  box.innerHTML = svg;
+
+  // Antippen oder mit dem Finger drüberfahren zeigt den nächsten Messpunkt
+  const svgEl = box.querySelector('svg');
+  const tip = box.querySelector('.chart-tip');
+  const cursor = box.querySelector('#chart-cursor');
+  const active = box.querySelector('#chart-active');
+  const show = evt => {
+    const rect = svgEl.getBoundingClientRect();
+    const px = ((evt.clientX - rect.left) / rect.width) * W;
+    const p = pts.reduce((a, b) => (Math.abs(b.x - px) < Math.abs(a.x - px) ? b : a));
+    cursor.setAttribute('x1', p.x); cursor.setAttribute('x2', p.x);
+    active.setAttribute('cx', p.x); active.setAttribute('cy', p.y);
+    cursor.setAttribute('visibility', 'visible'); active.setAttribute('visibility', 'visible');
+    tip.hidden = false;
+    tip.innerHTML = `<b>${fmtKg(p.e.kg)}</b><br>${formatDateShort(p.e.date)}`;
+    const half = tip.offsetWidth / 2;
+    const left = Math.min(Math.max((p.x / W) * rect.width, half), rect.width - half);
+    tip.style.left = `${left}px`;
+  };
+  const hide = () => {
+    tip.hidden = true;
+    cursor.setAttribute('visibility', 'hidden'); active.setAttribute('visibility', 'hidden');
+  };
+  svgEl.addEventListener('pointerdown', show);
+  svgEl.addEventListener('pointermove', show);
+  svgEl.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') hide(); });
+}
+
+function renderBody() {
+  const entries = sortedBody();
+  const first = entries[0];
+  const last = entries.at(-1);
+  renderBodyReminder(last);
+
+  const stats = $('#body-stats');
+  stats.hidden = !last;
+  if (last) {
+    stats.innerHTML = `
+      <div class="stat"><b>${fmtNum(round1(last.kg))}</b><span>Aktuell (kg)</span></div>
+      <div class="stat"><b>${fmtDiff(last.kg - first.kg).replace(' kg', '')}</b><span>Seit Start (kg)</span></div>
+      <div class="stat"><b>${entries.length}</b><span>Messungen</span></div>`;
+  }
+
+  $('#body-chart-card').hidden = !last;
+  if (last) renderBodyChart(entries);
+
+  const ul = $('#body-list');
+  ul.innerHTML = '';
+  $('#body-list-card').hidden = !last;
+  $('#body-list-card').previousElementSibling.hidden = !last;
+  [...entries].reverse().forEach(b => {
+    const idx = entries.indexOf(b);
+    const prev = entries[idx - 1];
+    const li = document.createElement('li');
+    li.innerHTML = `<div class="list-main"><div>${fmtKg(b.kg)}</div><span>${formatDateLong(b.date)}</span></div>` +
+      (prev ? `<span class="diff">${fmtDiff(b.kg - prev.kg)}</span>` : '');
+    const del = document.createElement('button');
+    del.className = 'icon-btn';
+    del.setAttribute('aria-label', 'Messung löschen');
+    del.innerHTML = ICON_TRASH;
+    del.addEventListener('click', async () => {
+      if (!(await confirmDialog(`Messung vom ${formatDateShort(b.date)} löschen?`))) return;
+      state.bodyweights = state.bodyweights.filter(x => x.id !== b.id);
+      save();
+      render();
+    });
+    li.appendChild(del);
+    ul.appendChild(li);
+  });
+}
+
 // ---------- Backup ----------
 $('#export-btn').addEventListener('click', () => {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
@@ -381,6 +567,7 @@ $('#import-file').addEventListener('change', async e => {
     if (!Array.isArray(data.exercises) || !Array.isArray(data.sets)) throw new Error('Ungültiges Format');
     if (!(await confirmDialog('Aktuelle Daten durch das Backup ersetzen?', 'Ersetzen'))) return;
     state = data;
+    state.bodyweights ??= [];
     save();
     toast('Backup importiert');
     render();
@@ -394,6 +581,7 @@ function render() {
   renderTraining();
   renderCalendar();
   renderExercises();
+  renderBody();
 }
 if (selectedExerciseId) selectExercise(selectedExerciseId);
 render();
