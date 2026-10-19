@@ -400,3 +400,6 @@ render();
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
+
+// iPhone ignoriert teilweise die Zoom-Sperre: Zwei-Finger-Zoom zusätzlich abfangen
+document.addEventListener('gesturestart', e => e.preventDefault());

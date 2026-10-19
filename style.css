@@ -33,7 +33,8 @@
   }
 }
 
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+/* touch-action: manipulation verhindert das Reinzoomen bei schnellem Doppeltippen */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
