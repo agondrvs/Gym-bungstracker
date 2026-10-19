@@ -3,82 +3,145 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#111827">
+  <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0c0c0e" media="(prefers-color-scheme: dark)">
   <title>Gym Tracker</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.svg">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
-    <h1>Gym Tracker</h1>
-  </header>
-
   <main>
-    <!-- Training -->
+    <!-- ===== Training ===== -->
     <section id="view-training" class="view active">
-      <div class="card">
-        <label for="exercise-select">Übung</label>
-        <select id="exercise-select"></select>
-        <p id="last-info" class="muted"></p>
+      <header class="page-header">
+        <p class="eyebrow" id="today-label"></p>
+        <h1>Training</h1>
+      </header>
 
-        <div class="row">
-          <div class="field">
-            <label for="reps-input">Wiederholungen</label>
-            <input id="reps-input" type="number" inputmode="numeric" min="1" placeholder="z.B. 10">
+      <div class="chips" id="exercise-chips"></div>
+
+      <div class="card entry">
+        <div class="entry-head">
+          <h2 id="entry-title"></h2>
+          <p class="muted" id="last-info"></p>
+        </div>
+
+        <div class="stepper-row">
+          <div class="stepper">
+            <span class="stepper-label">Wiederholungen</span>
+            <div class="stepper-control">
+              <button class="step-btn" data-target="reps-input" data-step="-1" aria-label="Weniger">−</button>
+              <input id="reps-input" type="number" inputmode="numeric" min="1" value="10">
+              <button class="step-btn" data-target="reps-input" data-step="1" aria-label="Mehr">+</button>
+            </div>
           </div>
-          <div class="field">
-            <label for="weight-input" id="weight-label">Gewicht (kg)</label>
-            <input id="weight-input" type="number" inputmode="decimal" step="0.5" placeholder="0">
+          <div class="stepper">
+            <span class="stepper-label" id="weight-label">Gewicht (kg)</span>
+            <div class="stepper-control">
+              <button class="step-btn" data-target="weight-input" data-step="-2.5" aria-label="Weniger">−</button>
+              <input id="weight-input" type="number" inputmode="decimal" step="0.5" value="0">
+              <button class="step-btn" data-target="weight-input" data-step="2.5" aria-label="Mehr">+</button>
+            </div>
           </div>
         </div>
-        <button id="add-set-btn" class="primary">Satz speichern</button>
+
+        <button id="add-set-btn" class="btn-primary">Satz speichern</button>
       </div>
 
-      <h2>Heute</h2>
+      <h3 class="section-title">Heute</h3>
       <div id="today-list"></div>
     </section>
 
-    <!-- Verlauf -->
-    <section id="view-history" class="view">
-      <label for="history-filter">Filter</label>
-      <select id="history-filter"></select>
-      <div id="history-list"></div>
+    <!-- ===== Kalender ===== -->
+    <section id="view-calendar" class="view">
+      <header class="page-header">
+        <p class="eyebrow">Übersicht</p>
+        <h1>Kalender</h1>
+      </header>
+
+      <div class="stats" id="stats"></div>
+
+      <div class="card calendar">
+        <div class="cal-head">
+          <button class="icon-btn" id="cal-prev" aria-label="Vorheriger Monat">
+            <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>
+          </button>
+          <h2 id="cal-title"></h2>
+          <button class="icon-btn" id="cal-next" aria-label="Nächster Monat">
+            <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>
+          </button>
+        </div>
+        <div class="cal-weekdays">
+          <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+      </div>
+
+      <h3 class="section-title" id="day-title"></h3>
+      <div id="day-list"></div>
     </section>
 
-    <!-- Übungen -->
+    <!-- ===== Übungen ===== -->
     <section id="view-exercises" class="view">
-      <div class="card">
-        <label for="new-exercise-name">Neue Übung</label>
-        <input id="new-exercise-name" type="text" placeholder="z.B. Bankdrücken">
-        <label for="new-exercise-type">Art</label>
-        <select id="new-exercise-type">
-          <option value="bodyweight">Körpergewicht (+ Zusatzgewicht)</option>
-          <option value="weight">Mit Gewicht (Hantel, Kabel, Maschine)</option>
-        </select>
-        <button id="add-exercise-btn" class="primary">Übung hinzufügen</button>
-      </div>
-      <ul id="exercise-list" class="list"></ul>
+      <header class="page-header">
+        <p class="eyebrow">Verwalten</p>
+        <h1>Übungen</h1>
+      </header>
 
       <div class="card">
-        <h2>Backup</h2>
-        <p class="muted">Deine Daten sind nur auf diesem Gerät gespeichert. Exportiere sie ab und zu.</p>
-        <div class="row">
-          <button id="export-btn">Exportieren</button>
-          <button id="import-btn">Importieren</button>
+        <label class="field-label" for="new-exercise-name">Neue Übung</label>
+        <input id="new-exercise-name" class="text-input" type="text" placeholder="z.B. Bankdrücken" autocomplete="off">
+        <div class="segmented" id="new-exercise-type">
+          <button data-type="bodyweight" class="active">Körpergewicht</button>
+          <button data-type="weight">Mit Gewicht</button>
+        </div>
+        <button id="add-exercise-btn" class="btn-primary">Hinzufügen</button>
+      </div>
+
+      <div class="card list-card">
+        <ul id="exercise-list" class="list"></ul>
+      </div>
+
+      <h3 class="section-title">Backup</h3>
+      <div class="card">
+        <p class="muted">Deine Daten sind nur auf diesem Gerät gespeichert. Sichere sie ab und zu.</p>
+        <div class="btn-row">
+          <button id="export-btn" class="btn-secondary">Exportieren</button>
+          <button id="import-btn" class="btn-secondary">Importieren</button>
         </div>
         <input id="import-file" type="file" accept="application/json" hidden>
       </div>
     </section>
   </main>
 
-  <nav>
-    <button data-view="training" class="active">Training</button>
-    <button data-view="history">Verlauf</button>
-    <button data-view="exercises">Übungen</button>
+  <nav class="tabbar">
+    <button data-view="training" class="active">
+      <svg viewBox="0 0 24 24"><path d="M6 7v10M18 7v10M3 10v4M21 10v4M6 12h12"/></svg>
+      <span>Training</span>
+    </button>
+    <button data-view="calendar">
+      <svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+      <span>Kalender</span>
+    </button>
+    <button data-view="exercises">
+      <svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r=".6"/><circle cx="4" cy="12" r=".6"/><circle cx="4" cy="18" r=".6"/></svg>
+      <span>Übungen</span>
+    </button>
   </nav>
+
+  <div class="toast" id="toast"></div>
+
+  <dialog id="confirm-dialog">
+    <p id="confirm-text"></p>
+    <div class="btn-row">
+      <button class="btn-secondary" value="cancel" id="confirm-cancel">Abbrechen</button>
+      <button class="btn-danger" value="ok" id="confirm-ok">Löschen</button>
+    </div>
+  </dialog>
 
   <script src="app.js"></script>
 </body>

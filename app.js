@@ -14,6 +14,8 @@ const DEFAULT_EXERCISES = [
   { name: 'Tricep pushdown', type: 'weight' },
 ];
 
+const ICON_TRASH = '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 function loadState() {
@@ -25,7 +27,7 @@ function loadState() {
   }
   return {
     exercises: DEFAULT_EXERCISES.map(e => ({ id: uid(), ...e })),
-    sets: [], // { id, exerciseId, date: ISO-String, reps, weight }
+    sets: [], // { id, exerciseId, date: ISO-String (Ortszeit), reps, weight }
   };
 }
 
@@ -33,72 +35,130 @@ let state = loadState();
 const save = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 save();
 
+// ---------- Hilfsfunktionen ----------
 const $ = sel => document.querySelector(sel);
+const pad = n => String(n).padStart(2, '0');
+const dateKey = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const keyToDate = key => { const [y, m, d] = key.split('-').map(Number); return new Date(y, m - 1, d); };
 const dayKey = iso => iso.slice(0, 10);
-const todayKey = () => {
-  const d = new Date();
-  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-};
+const todayKey = () => dateKey(new Date());
 const localIso = () => {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString();
 };
 const exerciseById = id => state.exercises.find(e => e.id === id);
 const escapeHtml = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtNum = n => String(n).replace('.', ',');
 
 function formatWeight(exercise, weight) {
   if (!exercise || exercise.type === 'bodyweight') {
     if (!weight) return 'Körpergewicht';
-    return weight > 0 ? `+${weight} kg` : `${weight} kg`;
+    return weight > 0 ? `+${fmtNum(weight)} kg` : `${fmtNum(weight)} kg`;
   }
-  return `${weight} kg`;
+  return `${fmtNum(weight)} kg`;
 }
 
-function formatDate(key) {
-  const [y, m, d] = key.split('-').map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+const formatDateLong = key =>
+  keyToDate(key).toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' });
+const formatDateShort = key =>
+  keyToDate(key).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' });
+
+let toastTimer;
+function toast(text) {
+  const el = $('#toast');
+  el.textContent = text;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1600);
+}
+
+// Eigener Bestätigungsdialog statt dem grauen Browser-Fenster
+function confirmDialog(text, okLabel = 'Löschen') {
+  const dlg = $('#confirm-dialog');
+  $('#confirm-text').textContent = text;
+  $('#confirm-ok').textContent = okLabel;
+  dlg.showModal();
+  return new Promise(resolve => {
+    const done = result => {
+      dlg.close();
+      $('#confirm-ok').onclick = $('#confirm-cancel').onclick = null;
+      resolve(result);
+    };
+    $('#confirm-ok').onclick = () => done(true);
+    $('#confirm-cancel').onclick = () => done(false);
+    dlg.oncancel = () => done(false);
+  });
 }
 
 // ---------- Navigation ----------
-document.querySelectorAll('nav button').forEach(btn => {
+document.querySelectorAll('.tabbar button').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('nav button').forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('.tabbar button').forEach(b => b.classList.toggle('active', b === btn));
     document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + btn.dataset.view));
+    window.scrollTo(0, 0);
     render();
   });
 });
 
 // ---------- Training ----------
-const exerciseSelect = $('#exercise-select');
+let selectedExerciseId = state.exercises[0]?.id;
 const repsInput = $('#reps-input');
 const weightInput = $('#weight-input');
 
-function updateExerciseForm() {
-  const ex = exerciseById(exerciseSelect.value);
-  if (!ex) return;
-  $('#weight-label').textContent = ex.type === 'bodyweight' ? 'Zusatzgewicht (kg)' : 'Gewicht (kg)';
-
-  // Letzten Satz dieser Übung anzeigen und Felder vorbefüllen
-  const last = [...state.sets].reverse().find(s => s.exerciseId === ex.id);
-  if (last) {
-    $('#last-info').textContent = `Zuletzt: ${last.reps} Wdh. × ${formatWeight(ex, last.weight)} (${formatDate(dayKey(last.date))})`;
-    weightInput.value = last.weight || '';
-  } else {
-    $('#last-info').textContent = 'Noch keine Sätze für diese Übung.';
-    weightInput.value = '';
-  }
+function selectExercise(id) {
+  selectedExerciseId = id;
+  const last = lastSetOf(id);
+  repsInput.value = last ? last.reps : 10;
+  weightInput.value = last ? last.weight : 0;
+  updateEntryInfo();
+  renderChips();
 }
 
-exerciseSelect.addEventListener('change', updateExerciseForm);
+const lastSetOf = id => [...state.sets].reverse().find(s => s.exerciseId === id);
+
+// Titel, Gewichts-Beschriftung und "Zuletzt"-Zeile der gewählten Übung
+function updateEntryInfo() {
+  const ex = exerciseById(selectedExerciseId);
+  $('.entry').style.display = ex ? '' : 'none';
+  if (!ex) return;
+  const last = lastSetOf(ex.id);
+  $('#entry-title').textContent = ex.name;
+  $('#weight-label').textContent = ex.type === 'bodyweight' ? 'Zusatzgewicht (kg)' : 'Gewicht (kg)';
+  $('#last-info').textContent = last
+    ? `Zuletzt: ${last.reps} × ${formatWeight(ex, last.weight)} · ${formatDateShort(dayKey(last.date))}`
+    : 'Noch keine Sätze für diese Übung';
+}
+
+function renderChips() {
+  const wrap = $('#exercise-chips');
+  wrap.innerHTML = '';
+  state.exercises.forEach(ex => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (ex.id === selectedExerciseId ? ' active' : '');
+    b.textContent = ex.name;
+    b.addEventListener('click', () => selectExercise(ex.id));
+    wrap.appendChild(b);
+  });
+}
+
+// Plus/Minus-Knöpfe
+document.querySelectorAll('.step-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const input = document.getElementById(btn.dataset.target);
+    let value = (parseFloat(input.value) || 0) + parseFloat(btn.dataset.step);
+    if (input === repsInput) value = Math.max(1, value);
+    input.value = Math.round(value * 100) / 100;
+  });
+});
 
 $('#add-set-btn').addEventListener('click', () => {
   const reps = parseInt(repsInput.value, 10);
-  const weight = parseFloat(weightInput.value.replace(',', '.')) || 0;
-  if (!exerciseSelect.value) return alert('Bitte eine Übung wählen.');
-  if (!reps || reps < 1) return alert('Bitte Wiederholungen eingeben.');
-  state.sets.push({ id: uid(), exerciseId: exerciseSelect.value, date: localIso(), reps, weight });
+  const weight = parseFloat(String(weightInput.value).replace(',', '.')) || 0;
+  if (!selectedExerciseId) return toast('Bitte zuerst eine Übung anlegen');
+  if (!reps || reps < 1) return toast('Bitte Wiederholungen eingeben');
+  state.sets.push({ id: uid(), exerciseId: selectedExerciseId, date: localIso(), reps, weight });
   save();
-  repsInput.value = '';
+  toast('Satz gespeichert');
   render();
 });
 
@@ -113,17 +173,18 @@ function renderSetGroups(sets, container) {
     const ex = exerciseById(exId);
     const div = document.createElement('div');
     div.className = 'group';
-    div.innerHTML = `<div class="group-title">${escapeHtml(ex ? ex.name : 'Gelöschte Übung')}</div>`;
+    div.innerHTML = `<div class="group-title">${escapeHtml(ex ? ex.name : 'Gelöschte Übung')}<small>${groupSets.length} ${groupSets.length === 1 ? 'Satz' : 'Sätze'}</small></div>`;
     const ul = document.createElement('ul');
     ul.className = 'list';
     groupSets.forEach((s, i) => {
       const li = document.createElement('li');
-      li.innerHTML = `<span><span class="set-num">${i + 1}.</span>${s.reps} Wdh. × ${formatWeight(ex, s.weight)}</span>`;
+      li.innerHTML = `<span class="set-num">${i + 1}</span><span class="set-text"><b>${s.reps}</b> Wdh. · ${formatWeight(ex, s.weight)}</span>`;
       const del = document.createElement('button');
-      del.className = 'small danger';
-      del.textContent = 'Löschen';
-      del.addEventListener('click', () => {
-        if (!confirm('Satz löschen?')) return;
+      del.className = 'icon-btn';
+      del.setAttribute('aria-label', 'Satz löschen');
+      del.innerHTML = ICON_TRASH;
+      del.addEventListener('click', async () => {
+        if (!(await confirmDialog('Diesen Satz löschen?'))) return;
         state.sets = state.sets.filter(x => x.id !== s.id);
         save();
         render();
@@ -137,60 +198,99 @@ function renderSetGroups(sets, container) {
 }
 
 function renderTraining() {
-  const current = exerciseSelect.value;
-  exerciseSelect.innerHTML = state.exercises
-    .map(e => `<option value="${e.id}">${escapeHtml(e.name)}</option>`)
-    .join('');
-  if (current && exerciseById(current)) exerciseSelect.value = current;
-  updateExerciseForm();
+  $('#today-label').textContent = formatDateLong(todayKey());
+  if (!exerciseById(selectedExerciseId)) {
+    selectedExerciseId = state.exercises[0]?.id;
+    if (selectedExerciseId) selectExercise(selectedExerciseId);
+  }
+  renderChips();
+  updateEntryInfo();
 
   const list = $('#today-list');
   list.innerHTML = '';
   const todaySets = state.sets.filter(s => dayKey(s.date) === todayKey());
   if (!todaySets.length) {
-    list.innerHTML = '<p class="empty">Heute noch keine Sätze.</p>';
+    list.innerHTML = '<p class="empty">Heute noch keine Sätze</p>';
     return;
   }
   renderSetGroups(todaySets, list);
 }
 
-// ---------- Verlauf ----------
-const historyFilter = $('#history-filter');
-historyFilter.addEventListener('change', renderHistory);
+// ---------- Kalender ----------
+const now = new Date();
+let calYear = now.getFullYear();
+let calMonth = now.getMonth();
+let selectedDay = todayKey();
 
-function renderHistory() {
-  const current = historyFilter.value;
-  historyFilter.innerHTML = '<option value="">Alle Übungen</option>' + state.exercises
-    .map(e => `<option value="${e.id}">${escapeHtml(e.name)}</option>`)
-    .join('');
-  historyFilter.value = current && exerciseById(current) ? current : '';
+$('#cal-prev').addEventListener('click', () => { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } renderCalendar(); });
+$('#cal-next').addEventListener('click', () => { calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; } renderCalendar(); });
 
-  const list = $('#history-list');
+function renderCalendar() {
+  const trainedDays = new Set(state.sets.map(s => dayKey(s.date)));
+  const monthPrefix = `${calYear}-${pad(calMonth + 1)}`;
+  const today = todayKey();
+
+  // Statistik
+  const monthSets = state.sets.filter(s => s.date.startsWith(monthPrefix));
+  const monthDays = new Set(monthSets.map(s => dayKey(s.date))).size;
+  $('#stats').innerHTML = `
+    <div class="stat"><b>${monthDays}</b><span>Trainings im Monat</span></div>
+    <div class="stat"><b>${monthSets.length}</b><span>Sätze im Monat</span></div>
+    <div class="stat"><b>${trainedDays.size}</b><span>Trainings gesamt</span></div>`;
+
+  // Monatsraster (Woche beginnt am Montag)
+  $('#cal-title').textContent = new Date(calYear, calMonth, 1)
+    .toLocaleDateString('de-DE', { month: 'long', year: 'numeric' });
+  const grid = $('#cal-grid');
+  grid.innerHTML = '';
+  const offset = (new Date(calYear, calMonth, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  for (let i = 0; i < offset; i++) grid.appendChild(document.createElement('span'));
+  for (let d = 1; d <= daysInMonth; d++) {
+    const key = `${monthPrefix}-${pad(d)}`;
+    const b = document.createElement('button');
+    b.className = 'cal-day';
+    if (trainedDays.has(key)) b.classList.add('trained');
+    if (key === today) b.classList.add('today');
+    if (key > today) b.classList.add('future');
+    if (key === selectedDay) b.classList.add('selected');
+    b.textContent = d;
+    b.addEventListener('click', () => { selectedDay = key; renderCalendar(); });
+    grid.appendChild(b);
+  }
+
+  // Details zum ausgewählten Tag
+  $('#day-title').textContent = formatDateLong(selectedDay);
+  const list = $('#day-list');
   list.innerHTML = '';
-  const sets = state.sets.filter(s => !historyFilter.value || s.exerciseId === historyFilter.value);
-  if (!sets.length) {
-    list.innerHTML = '<p class="empty">Noch keine Einträge.</p>';
+  const daySets = state.sets.filter(s => dayKey(s.date) === selectedDay);
+  if (!daySets.length) {
+    list.innerHTML = '<p class="empty">Kein Training an diesem Tag</p>';
     return;
   }
-  const days = [...new Set(sets.map(s => dayKey(s.date)))].sort().reverse();
-  days.forEach(day => {
-    const h = document.createElement('h2');
-    h.textContent = formatDate(day);
-    list.appendChild(h);
-    renderSetGroups(sets.filter(s => dayKey(s.date) === day), list);
-  });
+  renderSetGroups(daySets, list);
 }
 
 // ---------- Übungen ----------
+let newExerciseType = 'bodyweight';
+document.querySelectorAll('#new-exercise-type button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    newExerciseType = btn.dataset.type;
+    document.querySelectorAll('#new-exercise-type button').forEach(b => b.classList.toggle('active', b === btn));
+  });
+});
+
 $('#add-exercise-btn').addEventListener('click', () => {
-  const name = $('#new-exercise-name').value.trim();
-  if (!name) return alert('Bitte einen Namen eingeben.');
+  const input = $('#new-exercise-name');
+  const name = input.value.trim();
+  if (!name) return toast('Bitte einen Namen eingeben');
   if (state.exercises.some(e => e.name.toLowerCase() === name.toLowerCase())) {
-    return alert('Diese Übung gibt es schon.');
+    return toast('Diese Übung gibt es schon');
   }
-  state.exercises.push({ id: uid(), name, type: $('#new-exercise-type').value });
+  state.exercises.push({ id: uid(), name, type: newExerciseType });
   save();
-  $('#new-exercise-name').value = '';
+  input.value = '';
+  toast(`${name} hinzugefügt`);
   render();
 });
 
@@ -198,17 +298,18 @@ function renderExercises() {
   const ul = $('#exercise-list');
   ul.innerHTML = '';
   state.exercises.forEach(ex => {
+    const count = state.sets.filter(s => s.exerciseId === ex.id).length;
     const li = document.createElement('li');
-    li.innerHTML = `<span>${escapeHtml(ex.name)}<br><span class="tag">${ex.type === 'bodyweight' ? 'Körpergewicht + Zusatzgewicht' : 'Mit Gewicht'}</span></span>`;
+    li.innerHTML = `<div class="list-main"><div>${escapeHtml(ex.name)}</div><span>${ex.type === 'bodyweight' ? 'Körpergewicht + Zusatzgewicht' : 'Mit Gewicht'} · ${count} ${count === 1 ? 'Satz' : 'Sätze'}</span></div>`;
     const del = document.createElement('button');
-    del.className = 'small danger';
-    del.textContent = 'Entfernen';
-    del.addEventListener('click', () => {
-      const count = state.sets.filter(s => s.exerciseId === ex.id).length;
+    del.className = 'icon-btn';
+    del.setAttribute('aria-label', 'Übung entfernen');
+    del.innerHTML = ICON_TRASH;
+    del.addEventListener('click', async () => {
       const msg = count
-        ? `"${ex.name}" entfernen? Die ${count} gespeicherten Sätze werden ebenfalls gelöscht.`
-        : `"${ex.name}" entfernen?`;
-      if (!confirm(msg)) return;
+        ? `„${ex.name}“ entfernen? Die ${count} gespeicherten Sätze werden ebenfalls gelöscht.`
+        : `„${ex.name}“ entfernen?`;
+      if (!(await confirmDialog(msg, 'Entfernen'))) return;
       state.exercises = state.exercises.filter(e => e.id !== ex.id);
       state.sets = state.sets.filter(s => s.exerciseId !== ex.id);
       save();
@@ -232,27 +333,28 @@ $('#export-btn').addEventListener('click', () => {
 $('#import-btn').addEventListener('click', () => $('#import-file').click());
 $('#import-file').addEventListener('change', async e => {
   const file = e.target.files[0];
+  e.target.value = '';
   if (!file) return;
   try {
     const data = JSON.parse(await file.text());
     if (!Array.isArray(data.exercises) || !Array.isArray(data.sets)) throw new Error('Ungültiges Format');
-    if (!confirm('Aktuelle Daten durch das Backup ersetzen?')) return;
+    if (!(await confirmDialog('Aktuelle Daten durch das Backup ersetzen?', 'Ersetzen'))) return;
     state = data;
     save();
+    toast('Backup importiert');
     render();
   } catch (err) {
-    alert('Import fehlgeschlagen: ' + err.message);
-  } finally {
-    e.target.value = '';
+    toast('Import fehlgeschlagen');
   }
 });
 
 // ---------- Start ----------
 function render() {
   renderTraining();
-  renderHistory();
+  renderCalendar();
   renderExercises();
 }
+if (selectedExerciseId) selectExercise(selectedExerciseId);
 render();
 
 if ('serviceWorker' in navigator) {
