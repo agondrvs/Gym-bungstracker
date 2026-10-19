@@ -187,13 +187,14 @@ document.querySelectorAll('.step-btn').forEach(btn => {
     const input = document.getElementById(btn.dataset.target);
     let value = (parseFloat(input.value) || 0) + parseFloat(btn.dataset.step);
     if (input === repsInput) value = Math.max(1, value);
+    if (input === weightInput) value = Math.max(0, value); // Gewicht nie unter 0 kg
     input.value = Math.round(value * 100) / 100;
   });
 });
 
 $('#add-set-btn').addEventListener('click', () => {
   const reps = parseInt(repsInput.value, 10);
-  const weight = parseFloat(String(weightInput.value).replace(',', '.')) || 0;
+  const weight = Math.max(0, parseFloat(String(weightInput.value).replace(',', '.')) || 0);
   if (!selectedExerciseId) return toast('Bitte zuerst eine Übung anlegen');
   if (!reps || reps < 1) return toast('Bitte Wiederholungen eingeben');
   state.sets.push({ id: uid(), exerciseId: selectedExerciseId, date: localIso(), reps, weight });
@@ -416,3 +417,8 @@ document.addEventListener('touchend', e => {
   }
   lastTouchEnd = now;
 }, { passive: false });
+
+// Falls jemand per Hand eine Minuszahl eintippt: beim Verlassen des Feldes auf 0 setzen
+weightInput.addEventListener('change', () => {
+  if (parseFloat(String(weightInput.value).replace(',', '.')) < 0) weightInput.value = 0;
+});
