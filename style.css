@@ -68,6 +68,22 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 }
 .list-card { padding: 4px 0; }
 
+/* ===== Übungs-Suche ===== */
+.search {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 0 6px 0 14px;
+  box-shadow: var(--shadow);
+}
+.search > svg { width: 18px; height: 18px; color: var(--muted); flex: none; }
+.search input {
+  flex: 1; min-width: 0; border: none; background: none; outline: none; color: var(--text);
+  font: inherit; font-size: 1rem; padding: 12px 0;
+}
+.search input::-webkit-search-cancel-button { -webkit-appearance: none; }
+.search-clear { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; color: var(--muted); }
+.search-clear svg { width: 16px; height: 16px; }
+.chips-empty { color: var(--muted); font-size: .92rem; padding: 9px 0; white-space: nowrap; }
+
 /* ===== Übungs-Auswahl ===== */
 .chips {
   display: flex; gap: 8px; overflow-x: auto; padding: 2px 4px 14px; margin: 0 -16px; padding-left: 16px; padding-right: 16px;

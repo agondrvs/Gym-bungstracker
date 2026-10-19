@@ -129,17 +129,57 @@ function updateEntryInfo() {
     : 'Noch keine Sätze für diese Übung';
 }
 
+// Vergleicht ohne Groß/Klein und ohne Umlaute, damit "klimmzuge" auch "Klimmzüge" findet
+const normalize = text => text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+const searchInput = $('#exercise-search');
+
+function filteredExercises() {
+  const query = normalize(searchInput.value.trim());
+  return state.exercises.filter(ex => normalize(ex.name).includes(query));
+}
+
 function renderChips() {
   const wrap = $('#exercise-chips');
   wrap.innerHTML = '';
-  state.exercises.forEach(ex => {
+  $('#search-clear').hidden = !searchInput.value;
+  const matches = filteredExercises();
+  if (!matches.length) {
+    wrap.innerHTML = '<span class="chips-empty">Keine Übung gefunden – unter „Übungen“ kannst du sie anlegen</span>';
+    return;
+  }
+  matches.forEach(ex => {
     const b = document.createElement('button');
     b.className = 'chip' + (ex.id === selectedExerciseId ? ' active' : '');
     b.textContent = ex.name;
-    b.addEventListener('click', () => selectExercise(ex.id));
+    b.addEventListener('click', () => pickExercise(ex.id));
     wrap.appendChild(b);
   });
 }
+
+// Übung auswählen, Suche zurücksetzen und Tastatur schließen
+function pickExercise(id) {
+  searchInput.value = '';
+  searchInput.blur();
+  selectExercise(id);
+  $('#exercise-chips').scrollLeft = 0;
+}
+
+searchInput.addEventListener('input', () => {
+  renderChips();
+  $('#exercise-chips').scrollLeft = 0;
+});
+// Enter auf der Tastatur wählt den ersten Treffer
+searchInput.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const first = filteredExercises()[0];
+  if (first) pickExercise(first.id);
+});
+$('#search-clear').addEventListener('click', () => {
+  searchInput.value = '';
+  renderChips();
+  searchInput.focus();
+});
 
 // Plus/Minus-Knöpfe
 document.querySelectorAll('.step-btn').forEach(btn => {
