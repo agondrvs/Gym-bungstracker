@@ -583,8 +583,43 @@ function render() {
   renderExercises();
   renderBody();
 }
+// ---------- Trainings-Erinnerung ----------
+// Mehr als 2 Tage kein Satz eingetragen -> Nachricht beim Öffnen der App
+const NUDGE_AFTER_DAYS = 2;
+const NUDGE_PAUSE_MS = 30 * 60 * 1000; // nach dem Wegklicken 30 Minuten Ruhe
+const NUDGE_KEY = 'gym-tracker-last-nudge';
+
+function checkTrainingNudge() {
+  if (!state.sets.length) return; // noch nie trainiert: nicht nerven
+  const lastDay = state.sets.map(s => dayKey(s.date)).sort().at(-1);
+  const since = daysBetween(lastDay, todayKey());
+  if (since <= NUDGE_AFTER_DAYS) return;
+  let lastShown = 0;
+  try { lastShown = Number(localStorage.getItem(NUDGE_KEY)) || 0; } catch (e) {}
+  if (Date.now() - lastShown < NUDGE_PAUSE_MS) return;
+  const dlg = $('#nudge-dialog');
+  if (dlg.open || $('#confirm-dialog').open) return;
+  const weekday = keyToDate(lastDay).toLocaleDateString('de-DE', { weekday: 'long' });
+  $('#nudge-text').textContent = `Dein letztes Training war vor ${since} Tagen (${weekday}).`;
+  dlg.showModal();
+}
+
+$('#nudge-ok').addEventListener('click', () => {
+  try { localStorage.setItem(NUDGE_KEY, String(Date.now())); } catch (e) {}
+  $('#nudge-dialog').close();
+  document.querySelector('.tabbar button[data-view=training]').click();
+});
+$('#nudge-dialog').addEventListener('cancel', () => {
+  try { localStorage.setItem(NUDGE_KEY, String(Date.now())); } catch (e) {}
+});
+// Auch prüfen, wenn die App aus dem Hintergrund wieder geöffnet wird
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') checkTrainingNudge();
+});
+
 if (selectedExerciseId) selectExercise(selectedExerciseId);
 render();
+checkTrainingNudge();
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
