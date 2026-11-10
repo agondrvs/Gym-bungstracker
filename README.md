@@ -4,6 +4,7 @@ Einfache Web-App (PWA) zum Mitschreiben der Übungen während des Trainings.
 
 ## Funktionen
 - Eigene Gym-Splits (z.B. Push / Pull / Beine): Split und Tag antippen, Übungen abhaken, Sätze, Wdh. und kg eintragen
+- Split-Tage können Wochentagen zugeteilt werden, dann erscheint automatisch der Plan von heute
 - Sätze mit Wiederholungen und Gewicht speichern
 - Bei Körpergewichtsübungen (Klimmzüge, Dips, …) wird **Zusatzgewicht** eingetragen (0 = nur Körpergewicht)
 - Anzeige des letzten Satzes pro Übung, Gewicht wird vorbefüllt

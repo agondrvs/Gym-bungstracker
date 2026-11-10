@@ -232,6 +232,14 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 .checklist { padding-bottom: 6px; }
 .checklist-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
 .checklist-head h2 { margin: 0 0 2px; font-size: 1.25rem; font-weight: 650; }
+.day-weekdays { margin: 0 0 2px; font-size: .75rem; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: .05em; }
+.rest-note { margin: 0 4px 12px; font-size: .9rem; color: var(--muted); line-height: 1.4; }
+.weekday-picks { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.weekday {
+  padding: 8px 0; border-radius: 9px; font-size: .8rem; font-weight: 600;
+  background: var(--surface-2); color: var(--muted);
+}
+.weekday.active { background: var(--accent); color: #fff; }
 .progress { height: 6px; border-radius: 99px; background: var(--surface-2); margin: 12px 0 6px; overflow: hidden; }
 .progress span { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .3s ease; }
 

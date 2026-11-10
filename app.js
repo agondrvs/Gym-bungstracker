@@ -294,14 +294,26 @@ function renderTrainingMode() {
   if (mode === 'split') renderSplitArea();
 }
 
-// Vorschlag: der Tag nach dem zuletzt trainierten Split-Tag. Heute schon angefangen -> derselbe Tag.
+// Wochentage: 0 = Montag … 6 = Sonntag
+const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+const WEEKDAYS_LONG = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+const todayWeekday = () => (new Date().getDay() + 6) % 7;
+const weekdaysText = days => (days || []).slice().sort().map(w => WEEKDAYS[w]).join(' · ');
+const hasWeekPlan = split => split.days.some(d => d.weekdays?.length);
+const dayForToday = split => split.days.find(d => d.weekdays?.includes(todayWeekday()));
+
+// Welcher Tag ist dran?
+// 1. Heute schon etwas aus diesem Split abgehakt -> derselbe Tag
+// 2. Dem heutigen Wochentag ist ein Tag zugeteilt -> dieser Tag
+// 3. Sonst der Tag nach dem zuletzt trainierten (Reihum)
 function suggestedDay(split) {
   const dayIds = split.days.map(d => d.id);
   const last = [...state.sets].reverse().find(s => dayIds.includes(s.splitDayId));
+  if (last && dayKey(last.date) === todayKey()) return split.days[dayIds.indexOf(last.splitDayId)];
+  const planned = dayForToday(split);
+  if (planned) return planned;
   if (!last) return split.days[0];
-  const idx = dayIds.indexOf(last.splitDayId);
-  if (dayKey(last.date) === todayKey()) return split.days[idx];
-  return split.days[(idx + 1) % split.days.length];
+  return split.days[(dayIds.indexOf(last.splitDayId) + 1) % split.days.length];
 }
 
 // "3 × 10 · 40 kg", bei unterschiedlichen Sätzen "3 Sätze · 10/8/8 Wdh. · 40 kg"
@@ -357,13 +369,19 @@ function renderSplitArea() {
 
   // Tage des Splits
   const suggestion = suggestedDay(split);
+  const planned = dayForToday(split);
   if (!split.days.some(d => d.id === selectedDayId)) selectedDayId = suggestion.id;
+  // Mit Wochenplan, aber heute nichts geplant -> Ruhetag-Hinweis
+  const rest = $('#rest-note');
+  rest.hidden = !(hasWeekPlan(split) && !planned);
+  rest.textContent = `Heute (${WEEKDAYS_LONG[todayWeekday()]}) ist laut deinem Plan Ruhetag 😴 Du kannst trotzdem einen Tag auswählen.`;
   const dc = $('#day-chips');
   dc.innerHTML = '';
   split.days.forEach(d => {
     const b = document.createElement('button');
     b.className = 'chip' + (d.id === selectedDayId ? ' active' : '');
-    b.innerHTML = escapeHtml(d.name) + (d.id === suggestion.id ? '<small>dran</small>' : '');
+    const label = d.id === planned?.id ? 'heute' : (d.id === suggestion.id && !hasWeekPlan(split) ? 'dran' : '');
+    b.innerHTML = escapeHtml(d.name) + (label ? `<small>${label}</small>` : '');
     b.addEventListener('click', () => { selectedDayId = d.id; renderSplitArea(); });
     dc.appendChild(b);
   });
@@ -373,6 +391,10 @@ function renderSplitArea() {
   const exercises = day.exerciseIds.map(exerciseById).filter(Boolean);
   const done = exercises.filter(ex => todaySetsOf(ex.id).length).length;
   $('#day-name').textContent = day.name;
+  $('#day-weekdays').textContent = day.weekdays?.length
+    ? day.weekdays.slice().sort().map(w => WEEKDAYS_LONG[w]).join(', ')
+    : '';
+  $('#day-weekdays').hidden = !day.weekdays?.length;
   $('#day-progress').textContent = exercises.length
     ? (done === exercises.length ? `Alle ${done} Übungen erledigt 💪` : `${done} von ${exercises.length} erledigt`)
     : 'Noch keine Übungen – tipp auf den Stift';
@@ -460,7 +482,8 @@ function renderSplitList() {
   state.splits.forEach(sp => {
     const li = document.createElement('li');
     li.className = 'split-list-item';
-    li.innerHTML = `<div class="list-main"><div>${escapeHtml(sp.name)}</div><span>${sp.days.length} ${sp.days.length === 1 ? 'Tag' : 'Tage'} · ${escapeHtml(sp.days.map(d => d.name).join(' / '))}</span></div>`;
+    const days = sp.days.map(d => escapeHtml(d.name) + (d.weekdays?.length ? ` (${weekdaysText(d.weekdays)})` : '')).join(' / ');
+    li.innerHTML = `<div class="list-main"><div>${escapeHtml(sp.name)}</div><span>${sp.days.length} ${sp.days.length === 1 ? 'Tag' : 'Tage'} · ${days}</span></div>`;
     li.querySelector('.list-main').addEventListener('click', () => openSplitEditor(sp.id));
     const edit = document.createElement('button');
     edit.className = 'icon-btn';
@@ -511,11 +534,32 @@ function renderSplitEditor() {
         <span class="day-badge">Tag ${i + 1}</span>
         <input class="text-input" type="text" placeholder="z.B. Push" autocomplete="off">
       </div>
+      <p class="hint">An welchen Wochentagen? (optional)</p>
+      <div class="weekday-picks"></div>
       <p class="hint">Übungen antippen – die Zahl ist die Reihenfolge im Training</p>
       <div class="pick-chips"></div>`;
     const input = box.querySelector('input');
     input.value = day.name;
     input.addEventListener('input', () => { day.name = input.value; });
+    // Wochentage: jeder Wochentag gehört höchstens zu einem Tag des Splits
+    const wd = box.querySelector('.weekday-picks');
+    WEEKDAYS.forEach((label, w) => {
+      const b = document.createElement('button');
+      const on = day.weekdays?.includes(w);
+      b.className = 'weekday' + (on ? ' active' : '');
+      b.textContent = label;
+      b.setAttribute('aria-label', WEEKDAYS_LONG[w]);
+      b.addEventListener('click', () => {
+        if (on) {
+          day.weekdays = day.weekdays.filter(x => x !== w);
+        } else {
+          editing.days.forEach(other => { if (other.weekdays) other.weekdays = other.weekdays.filter(x => x !== w); });
+          day.weekdays = [...(day.weekdays || []), w];
+        }
+        renderSplitEditor();
+      });
+      wd.appendChild(b);
+    });
     if (editing.days.length > 1) {
       const del = document.createElement('button');
       del.className = 'icon-btn';
