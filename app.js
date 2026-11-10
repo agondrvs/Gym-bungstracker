@@ -34,6 +34,8 @@ function loadState() {
 let state = loadState();
 // Ältere Daten haben noch keine Körpergewicht-Liste
 state.bodyweights ??= []; // { id, date: 'JJJJ-MM-TT', kg }
+// Splits: { id, name, days: [{ id, name, exerciseIds: [] }] }
+state.splits ??= [];
 const save = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 save();
 
@@ -243,6 +245,7 @@ function renderSetGroups(sets, container) {
 
 function renderTraining() {
   $('#today-label').textContent = formatDateLong(todayKey());
+  renderTrainingMode();
   if (!exerciseById(selectedExerciseId)) {
     selectedExerciseId = state.exercises[0]?.id;
     if (selectedExerciseId) selectExercise(selectedExerciseId);
@@ -259,6 +262,348 @@ function renderTraining() {
   }
   renderSetGroups(todaySets, list);
 }
+
+// ---------- Split ----------
+const ICON_CHECK = '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const ICON_EDIT = '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg>';
+let selectedDayId = null; // gewählter Tag im aktiven Split
+const drafts = {};        // Eingaben pro Übung (Sätze, Wdh., kg), bis sie abgehakt wird
+
+const splitById = id => state.splits.find(s => s.id === id);
+const activeSplit = () => splitById(state.activeSplitId) || state.splits[0];
+const todaySetsOf = exId => state.sets.filter(s => s.exerciseId === exId && dayKey(s.date) === todayKey());
+// Ohne eigene Wahl: Split-Modus, sobald es einen Split gibt
+const trainingMode = () => state.trainingMode || (state.splits.length ? 'split' : 'free');
+
+document.querySelectorAll('#training-mode button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    state.trainingMode = btn.dataset.mode;
+    save();
+    renderTraining();
+  });
+});
+
+function renderTrainingMode() {
+  const mode = trainingMode();
+  document.querySelectorAll('#training-mode button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  $('#split-area').hidden = mode !== 'split';
+  $('#free-area').hidden = mode !== 'free';
+  // Die Abhak-Liste zeigt schon alles von heute, deshalb "Heute" nur im Einzeln-Modus
+  $('#today-list').hidden = mode === 'split';
+  $('#today-list').previousElementSibling.hidden = mode === 'split';
+  if (mode === 'split') renderSplitArea();
+}
+
+// Vorschlag: der Tag nach dem zuletzt trainierten Split-Tag. Heute schon angefangen -> derselbe Tag.
+function suggestedDay(split) {
+  const dayIds = split.days.map(d => d.id);
+  const last = [...state.sets].reverse().find(s => dayIds.includes(s.splitDayId));
+  if (!last) return split.days[0];
+  const idx = dayIds.indexOf(last.splitDayId);
+  if (dayKey(last.date) === todayKey()) return split.days[idx];
+  return split.days[(idx + 1) % split.days.length];
+}
+
+// "3 × 10 · 40 kg", bei unterschiedlichen Sätzen "3 Sätze · 10/8/8 Wdh. · 40 kg"
+function summarizeSets(ex, sets) {
+  const same = sets.every(s => s.reps === sets[0].reps && s.weight === sets[0].weight);
+  const w = formatWeight(ex, sets.at(-1).weight);
+  return same
+    ? `${sets.length} × ${sets[0].reps} Wdh. · ${w}`
+    : `${sets.length} Sätze · ${sets.map(s => s.reps).join('/')} Wdh. · ${w}`;
+}
+
+// Sätze vom letzten Tag, an dem die Übung gemacht wurde
+function lastSessionOf(exId) {
+  const last = lastSetOf(exId);
+  if (!last) return [];
+  return state.sets.filter(s => s.exerciseId === exId && dayKey(s.date) === dayKey(last.date));
+}
+
+// Startwerte fürs Abhaken: wie beim letzten Mal, sonst 3 × 10
+function draftFor(ex) {
+  if (!drafts[ex.id]) {
+    const prev = lastSessionOf(ex.id);
+    drafts[ex.id] = prev.length
+      ? { sets: Math.min(prev.length, 10), reps: prev.at(-1).reps, weight: prev.at(-1).weight }
+      : { sets: 3, reps: 10, weight: 0 };
+  }
+  return drafts[ex.id];
+}
+
+function renderSplitArea() {
+  const split = activeSplit();
+  $('#split-empty').hidden = !!split;
+  $('#split-content').hidden = !split;
+  if (!split) return;
+  state.activeSplitId = split.id;
+
+  // Split-Auswahl (nur sichtbar, wenn es mehrere gibt)
+  const sc = $('#split-chips');
+  sc.innerHTML = '';
+  sc.hidden = state.splits.length < 2;
+  state.splits.forEach(sp => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (sp.id === split.id ? ' active' : '');
+    b.textContent = sp.name;
+    b.addEventListener('click', () => {
+      state.activeSplitId = sp.id;
+      selectedDayId = null;
+      save();
+      renderSplitArea();
+    });
+    sc.appendChild(b);
+  });
+
+  // Tage des Splits
+  const suggestion = suggestedDay(split);
+  if (!split.days.some(d => d.id === selectedDayId)) selectedDayId = suggestion.id;
+  const dc = $('#day-chips');
+  dc.innerHTML = '';
+  split.days.forEach(d => {
+    const b = document.createElement('button');
+    b.className = 'chip' + (d.id === selectedDayId ? ' active' : '');
+    b.innerHTML = escapeHtml(d.name) + (d.id === suggestion.id ? '<small>dran</small>' : '');
+    b.addEventListener('click', () => { selectedDayId = d.id; renderSplitArea(); });
+    dc.appendChild(b);
+  });
+
+  // Abhak-Liste für den gewählten Tag
+  const day = split.days.find(d => d.id === selectedDayId);
+  const exercises = day.exerciseIds.map(exerciseById).filter(Boolean);
+  const done = exercises.filter(ex => todaySetsOf(ex.id).length).length;
+  $('#day-name').textContent = day.name;
+  $('#day-progress').textContent = exercises.length
+    ? (done === exercises.length ? `Alle ${done} Übungen erledigt 💪` : `${done} von ${exercises.length} erledigt`)
+    : 'Noch keine Übungen – tipp auf den Stift';
+  $('#day-progress-bar').style.width = exercises.length ? `${(done / exercises.length) * 100}%` : '0';
+  const ul = $('#check-list');
+  ul.innerHTML = '';
+  exercises.forEach(ex => ul.appendChild(renderCheckRow(ex, day)));
+}
+
+function renderCheckRow(ex, day) {
+  const li = document.createElement('li');
+  const today = todaySetsOf(ex.id);
+  const done = today.length > 0;
+  li.className = done ? 'done' : '';
+
+  const btn = document.createElement('button');
+  btn.className = 'check-btn';
+  btn.setAttribute('aria-label', done ? `${ex.name} nicht mehr abhaken` : `${ex.name} abhaken`);
+  btn.innerHTML = ICON_CHECK;
+  li.appendChild(btn);
+
+  const main = document.createElement('div');
+  main.className = 'check-main';
+  if (done) {
+    main.innerHTML = `<div class="check-name">${escapeHtml(ex.name)}</div><div class="check-sub">${summarizeSets(ex, today)}</div>`;
+    btn.addEventListener('click', () => undoExercise(ex));
+  } else {
+    const d = draftFor(ex);
+    const prev = lastSessionOf(ex.id);
+    main.innerHTML = `
+      <div class="check-name">${escapeHtml(ex.name)}</div>
+      <div class="check-sub">${prev.length ? `Zuletzt: ${summarizeSets(ex, prev)}` : 'Noch nie gemacht'}</div>
+      <div class="mini-fields">
+        <label class="mini-field"><span>Sätze</span><input data-k="sets" type="number" inputmode="numeric" min="1" value="${d.sets}"></label>
+        <label class="mini-field"><span>Wdh.</span><input data-k="reps" type="number" inputmode="numeric" min="1" value="${d.reps}"></label>
+        <label class="mini-field"><span>${ex.type === 'bodyweight' ? '+ kg' : 'kg'}</span><input data-k="weight" type="number" inputmode="decimal" step="0.5" min="0" value="${d.weight}"></label>
+      </div>`;
+    main.querySelectorAll('input').forEach(input => {
+      input.addEventListener('input', () => { d[input.dataset.k] = input.value; });
+    });
+    btn.addEventListener('click', () => completeExercise(ex, day));
+  }
+  li.appendChild(main);
+  return li;
+}
+
+// Abhaken = die Sätze mit den eingetragenen Werten für heute speichern
+function completeExercise(ex, day) {
+  const d = draftFor(ex);
+  const count = parseInt(d.sets, 10);
+  const reps = parseInt(d.reps, 10);
+  const weight = Math.max(0, parseFloat(String(d.weight).replace(',', '.')) || 0);
+  if (!count || count < 1) return toast('Bitte Anzahl Sätze eingeben');
+  if (!reps || reps < 1) return toast('Bitte Wiederholungen eingeben');
+  const date = localIso();
+  for (let i = 0; i < Math.min(count, 20); i++) {
+    state.sets.push({ id: uid(), exerciseId: ex.id, date, reps, weight, splitDayId: day.id });
+  }
+  delete drafts[ex.id];
+  save();
+  const allDone = day.exerciseIds.map(exerciseById).filter(Boolean).every(e => todaySetsOf(e.id).length);
+  toast(allDone ? 'Tag geschafft! 💪' : `${ex.name} erledigt`);
+  render();
+}
+
+// Haken wieder wegnehmen = heutige Sätze dieser Übung löschen
+async function undoExercise(ex) {
+  const n = todaySetsOf(ex.id).length;
+  const msg = `Haken bei „${ex.name}“ entfernen? ${n === 1 ? 'Der heutige Satz wird' : `Die ${n} heutigen Sätze werden`} gelöscht.`;
+  if (!(await confirmDialog(msg, 'Entfernen'))) return;
+  state.sets = state.sets.filter(s => !(s.exerciseId === ex.id && dayKey(s.date) === todayKey()));
+  save();
+  render();
+}
+
+$('#split-create-first').addEventListener('click', () => openSplitEditor());
+$('#split-edit-current').addEventListener('click', () => openSplitEditor(activeSplit().id));
+$('#split-new').addEventListener('click', () => openSplitEditor());
+
+// Liste der Splits im Tab "Übungen"
+function renderSplitList() {
+  const ul = $('#split-list');
+  ul.innerHTML = '';
+  $('#split-list-card').hidden = !state.splits.length;
+  state.splits.forEach(sp => {
+    const li = document.createElement('li');
+    li.className = 'split-list-item';
+    li.innerHTML = `<div class="list-main"><div>${escapeHtml(sp.name)}</div><span>${sp.days.length} ${sp.days.length === 1 ? 'Tag' : 'Tage'} · ${escapeHtml(sp.days.map(d => d.name).join(' / '))}</span></div>`;
+    li.querySelector('.list-main').addEventListener('click', () => openSplitEditor(sp.id));
+    const edit = document.createElement('button');
+    edit.className = 'icon-btn';
+    edit.setAttribute('aria-label', 'Split bearbeiten');
+    edit.innerHTML = ICON_EDIT;
+    edit.addEventListener('click', () => openSplitEditor(sp.id));
+    li.appendChild(edit);
+    ul.appendChild(li);
+  });
+}
+
+// ----- Split anlegen / bearbeiten -----
+let editing = null;       // Arbeitskopie, wird erst bei "Fertig" übernommen
+let editingIsNew = false;
+let quickType = 'weight';
+
+function sheetMessage(el, text) {
+  el.textContent = text;
+  el.hidden = !text;
+}
+
+function openSplitEditor(id) {
+  const existing = splitById(id);
+  editingIsNew = !existing;
+  editing = existing
+    ? JSON.parse(JSON.stringify(existing))
+    : { id: uid(), name: '', days: [{ id: uid(), name: '', exerciseIds: [] }] };
+  $('#split-editor-title').textContent = existing ? 'Split bearbeiten' : 'Neuer Split';
+  $('#split-name').value = editing.name;
+  $('#split-delete').hidden = editingIsNew;
+  sheetMessage($('#split-error'), '');
+  sheetMessage($('#quick-msg'), '');
+  renderSplitEditor();
+  $('#split-editor').showModal();
+  $('#split-editor .sheet-body').scrollTop = 0;
+}
+
+$('#split-name').addEventListener('input', e => { editing.name = e.target.value; });
+
+function renderSplitEditor() {
+  const wrap = $('#split-days');
+  wrap.innerHTML = '';
+  editing.days.forEach((day, i) => {
+    const box = document.createElement('div');
+    box.className = 'day-edit';
+    box.innerHTML = `
+      <div class="day-edit-head">
+        <span class="day-badge">Tag ${i + 1}</span>
+        <input class="text-input" type="text" placeholder="z.B. Push" autocomplete="off">
+      </div>
+      <p class="hint">Übungen antippen – die Zahl ist die Reihenfolge im Training</p>
+      <div class="pick-chips"></div>`;
+    const input = box.querySelector('input');
+    input.value = day.name;
+    input.addEventListener('input', () => { day.name = input.value; });
+    if (editing.days.length > 1) {
+      const del = document.createElement('button');
+      del.className = 'icon-btn';
+      del.setAttribute('aria-label', `Tag ${i + 1} entfernen`);
+      del.innerHTML = ICON_TRASH;
+      del.addEventListener('click', () => { editing.days.splice(i, 1); renderSplitEditor(); });
+      box.querySelector('.day-edit-head').appendChild(del);
+    }
+    const picks = box.querySelector('.pick-chips');
+    state.exercises.forEach(ex => {
+      const pos = day.exerciseIds.indexOf(ex.id);
+      const b = document.createElement('button');
+      b.className = 'chip' + (pos >= 0 ? ' active' : '');
+      b.innerHTML = (pos >= 0 ? `<b>${pos + 1}</b>` : '') + escapeHtml(ex.name);
+      b.addEventListener('click', () => {
+        if (pos >= 0) day.exerciseIds.splice(pos, 1);
+        else day.exerciseIds.push(ex.id);
+        renderSplitEditor();
+      });
+      picks.appendChild(b);
+    });
+    wrap.appendChild(box);
+  });
+}
+
+$('#split-add-day').addEventListener('click', () => {
+  editing.days.push({ id: uid(), name: '', exerciseIds: [] });
+  renderSplitEditor();
+  const inputs = document.querySelectorAll('#split-days .day-edit-head input');
+  inputs[inputs.length - 1].focus();
+});
+
+$('#split-cancel').addEventListener('click', () => $('#split-editor').close());
+
+$('#split-save').addEventListener('click', () => {
+  const name = editing.name.trim();
+  if (!name) {
+    sheetMessage($('#split-error'), 'Bitte gib deinem Split einen Namen.');
+    $('#split-editor .sheet-body').scrollTop = 0;
+    $('#split-name').focus();
+    return;
+  }
+  editing.name = name;
+  editing.days.forEach((d, i) => { d.name = d.name.trim() || `Tag ${i + 1}`; });
+  const idx = state.splits.findIndex(s => s.id === editing.id);
+  if (idx >= 0) state.splits[idx] = editing;
+  else state.splits.push(editing);
+  state.activeSplitId = editing.id;
+  state.trainingMode = 'split';
+  selectedDayId = null;
+  save();
+  $('#split-editor').close();
+  toast(editingIsNew ? 'Split gespeichert' : 'Split aktualisiert');
+  render();
+});
+
+$('#split-delete').addEventListener('click', async () => {
+  if (!(await confirmDialog(`Split „${editing.name}“ löschen? Deine gespeicherten Sätze bleiben erhalten.`))) return;
+  state.splits = state.splits.filter(s => s.id !== editing.id);
+  if (state.activeSplitId === editing.id) state.activeSplitId = null;
+  save();
+  $('#split-editor').close();
+  toast('Split gelöscht');
+  render();
+});
+
+// Übung direkt im Split-Fenster anlegen
+document.querySelectorAll('#split-new-exercise-type button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    quickType = btn.dataset.type;
+    document.querySelectorAll('#split-new-exercise-type button').forEach(b => b.classList.toggle('active', b === btn));
+  });
+});
+
+$('#split-new-exercise-btn').addEventListener('click', () => {
+  const input = $('#split-new-exercise');
+  const name = input.value.trim();
+  if (!name) return sheetMessage($('#quick-msg'), 'Bitte einen Namen eingeben.');
+  if (state.exercises.some(e => e.name.toLowerCase() === name.toLowerCase())) {
+    return sheetMessage($('#quick-msg'), 'Diese Übung gibt es schon.');
+  }
+  state.exercises.push({ id: uid(), name, type: quickType });
+  save();
+  input.value = '';
+  sheetMessage($('#quick-msg'), `„${name}“ angelegt – tipp sie oben beim passenden Tag an.`);
+  renderSplitEditor();
+  render();
+});
 
 // ---------- Kalender ----------
 const now = new Date();
@@ -356,6 +701,8 @@ function renderExercises() {
       if (!(await confirmDialog(msg, 'Entfernen'))) return;
       state.exercises = state.exercises.filter(e => e.id !== ex.id);
       state.sets = state.sets.filter(s => s.exerciseId !== ex.id);
+      // Auch aus allen Split-Tagen entfernen
+      state.splits.forEach(sp => sp.days.forEach(d => { d.exerciseIds = d.exerciseIds.filter(id => id !== ex.id); }));
       save();
       render();
     });
@@ -568,6 +915,7 @@ $('#import-file').addEventListener('change', async e => {
     if (!(await confirmDialog('Aktuelle Daten durch das Backup ersetzen?', 'Ersetzen'))) return;
     state = data;
     state.bodyweights ??= [];
+    state.splits ??= [];
     save();
     toast('Backup importiert');
     render();
@@ -581,6 +929,7 @@ function render() {
   renderTraining();
   renderCalendar();
   renderExercises();
+  renderSplitList();
   renderBody();
 }
 if (selectedExerciseId) selectExercise(selectedExerciseId);

@@ -22,6 +22,39 @@
         <h1>Training</h1>
       </header>
 
+      <div class="segmented mode-switch" id="training-mode">
+        <button data-mode="split">Mein Split</button>
+        <button data-mode="free">Einzeln</button>
+      </div>
+
+      <!-- Split-Modus: Split und Tag wählen, Übungen abhaken -->
+      <div id="split-area">
+        <div class="card split-empty" id="split-empty">
+          <h2>Noch kein Split</h2>
+          <p class="muted">Leg deinen Split an, z.B. Push / Pull / Beine. Danach siehst du hier pro Tag deine Übungen zum Abhaken.</p>
+          <button class="btn-primary" id="split-create-first">Split anlegen</button>
+        </div>
+        <div id="split-content">
+          <div class="chips" id="split-chips"></div>
+          <div class="chips day-chips" id="day-chips"></div>
+          <div class="card checklist">
+            <div class="checklist-head">
+              <div>
+                <h2 id="day-name"></h2>
+                <p class="muted" id="day-progress"></p>
+              </div>
+              <button class="icon-btn" id="split-edit-current" aria-label="Split bearbeiten">
+                <svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg>
+              </button>
+            </div>
+            <div class="progress"><span id="day-progress-bar"></span></div>
+            <ul class="list check-list" id="check-list"></ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Einzeln-Modus: wie bisher eine Übung suchen und Satz für Satz speichern -->
+      <div id="free-area">
       <div class="search">
         <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
         <input id="exercise-search" type="search" placeholder="Übung suchen" autocomplete="off" enterkeyhint="go">
@@ -57,6 +90,7 @@
         </div>
 
         <button id="add-set-btn" class="btn-primary">Satz speichern</button>
+      </div>
       </div>
 
       <h3 class="section-title">Heute</h3>
@@ -112,6 +146,12 @@
       <div class="card list-card">
         <ul id="exercise-list" class="list"></ul>
       </div>
+
+      <h3 class="section-title">Meine Splits</h3>
+      <div class="card list-card" id="split-list-card">
+        <ul id="split-list" class="list"></ul>
+      </div>
+      <button class="btn-secondary" id="split-new">+ Neuer Split</button>
 
       <h3 class="section-title">Backup</h3>
       <div class="card">
@@ -187,6 +227,35 @@
     <div class="btn-row">
       <button class="btn-secondary" value="cancel" id="confirm-cancel">Abbrechen</button>
       <button class="btn-danger" value="ok" id="confirm-ok">Löschen</button>
+    </div>
+  </dialog>
+
+  <!-- Split anlegen / bearbeiten -->
+  <dialog id="split-editor" class="sheet">
+    <div class="sheet-head">
+      <button class="link-btn" id="split-cancel">Abbrechen</button>
+      <h2 id="split-editor-title">Neuer Split</h2>
+      <button class="link-btn strong" id="split-save">Fertig</button>
+    </div>
+    <div class="sheet-body">
+      <label class="field-label" for="split-name">Name</label>
+      <input id="split-name" class="text-input" type="text" placeholder="z.B. Push Pull Beine" autocomplete="off">
+      <p class="form-msg error" id="split-error" hidden></p>
+      <div id="split-days"></div>
+      <button class="btn-secondary" id="split-add-day">+ Tag hinzufügen</button>
+
+      <div class="card quick-add">
+        <label class="field-label" for="split-new-exercise">Übung fehlt? Hier direkt anlegen</label>
+        <input id="split-new-exercise" class="text-input" type="text" placeholder="z.B. Bankdrücken" autocomplete="off">
+        <div class="segmented" id="split-new-exercise-type">
+          <button data-type="bodyweight">Körpergewicht</button>
+          <button data-type="weight" class="active">Gym Gewicht</button>
+        </div>
+        <button class="btn-secondary" id="split-new-exercise-btn">Übung anlegen</button>
+        <p class="form-msg" id="quick-msg" hidden></p>
+      </div>
+
+      <button class="link-btn danger" id="split-delete">Split löschen</button>
     </div>
   </dialog>
 
