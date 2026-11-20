@@ -267,7 +267,12 @@ function renderTraining() {
 const ICON_CHECK = '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 const ICON_EDIT = '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg>';
 let selectedDayId = null; // gewählter Tag im aktiven Split
-const drafts = {};        // Eingaben pro Übung (Sätze, Wdh., kg), bis sie abgehakt wird
+// Eingaben pro Übung (je Satz Wdh. und kg), bis sie abgehakt wird.
+// Wird gespeichert, damit nichts verloren geht, wenn die App zwischendurch zu ist. Gilt nur für heute.
+function splitDrafts() {
+  if (state.splitDrafts?.day !== todayKey()) state.splitDrafts = { day: todayKey(), items: {} };
+  return state.splitDrafts.items;
+}
 
 const splitById = id => state.splits.find(s => s.id === id);
 const activeSplit = () => splitById(state.activeSplitId) || state.splits[0];
@@ -316,13 +321,18 @@ function suggestedDay(split) {
   return split.days[(dayIds.indexOf(last.splitDayId) + 1) % split.days.length];
 }
 
-// "3 × 10 · 40 kg", bei unterschiedlichen Sätzen "3 Sätze · 10/8/8 Wdh. · 40 kg"
+// Ein Satz kurz: "8 × 80 kg", "10 × +5 kg" oder bei Körpergewicht ohne Zusatz "10 Wdh."
+function setShort(ex, s) {
+  if (ex.type === 'bodyweight') return s.weight ? `${s.reps} × +${fmtNum(s.weight)} kg` : `${s.reps} Wdh.`;
+  return `${s.reps} × ${fmtNum(s.weight)} kg`;
+}
+
+// Alle Sätze gleich: "3 × 10 Wdh. · 40 kg", sonst jeder Satz einzeln: "10 × 40 kg · 8 × 45 kg · 6 × 50 kg"
 function summarizeSets(ex, sets) {
   const same = sets.every(s => s.reps === sets[0].reps && s.weight === sets[0].weight);
-  const w = formatWeight(ex, sets.at(-1).weight);
   return same
-    ? `${sets.length} × ${sets[0].reps} Wdh. · ${w}`
-    : `${sets.length} Sätze · ${sets.map(s => s.reps).join('/')} Wdh. · ${w}`;
+    ? `${sets.length} × ${sets[0].reps} Wdh. · ${formatWeight(ex, sets[0].weight)}`
+    : sets.map(s => setShort(ex, s)).join(' · ');
 }
 
 // Sätze vom letzten Tag, an dem die Übung gemacht wurde
@@ -332,13 +342,14 @@ function lastSessionOf(exId) {
   return state.sets.filter(s => s.exerciseId === exId && dayKey(s.date) === dayKey(last.date));
 }
 
-// Startwerte fürs Abhaken: wie beim letzten Mal, sonst 3 × 10
+// Startwerte fürs Abhaken: jeder Satz wie beim letzten Mal, sonst 3 Sätze à 10 Wdh.
 function draftFor(ex) {
-  if (!drafts[ex.id]) {
-    const prev = lastSessionOf(ex.id);
+  const drafts = splitDrafts();
+  if (!Array.isArray(drafts[ex.id])) {
+    const prev = lastSessionOf(ex.id).slice(0, 10);
     drafts[ex.id] = prev.length
-      ? { sets: Math.min(prev.length, 10), reps: prev.at(-1).reps, weight: prev.at(-1).weight }
-      : { sets: 3, reps: 10, weight: 0 };
+      ? prev.map(s => ({ reps: s.reps, weight: s.weight }))
+      : [1, 2, 3].map(() => ({ reps: 10, weight: 0 }));
   }
   return drafts[ex.id];
 }
@@ -422,18 +433,41 @@ function renderCheckRow(ex, day) {
     main.innerHTML = `<div class="check-name">${escapeHtml(ex.name)}</div><div class="check-sub">${summarizeSets(ex, today)}</div>`;
     btn.addEventListener('click', () => undoExercise(ex));
   } else {
-    const d = draftFor(ex);
+    const sets = draftFor(ex);
     const prev = lastSessionOf(ex.id);
+    // Eine Zeile pro Satz: Nummer, Wdh., kg
+    const rows = sets.map((s, i) => `
+      <span class="set-no">${i + 1}</span>
+      <input data-i="${i}" data-k="reps" type="number" inputmode="numeric" min="1" value="${s.reps}" aria-label="Satz ${i + 1} Wiederholungen">
+      <input data-i="${i}" data-k="weight" type="number" inputmode="decimal" step="0.5" min="0" value="${s.weight}" aria-label="Satz ${i + 1} Gewicht">`).join('');
     main.innerHTML = `
       <div class="check-name">${escapeHtml(ex.name)}</div>
       <div class="check-sub">${prev.length ? `Zuletzt: ${summarizeSets(ex, prev)}` : 'Noch nie gemacht'}</div>
-      <div class="mini-fields">
-        <label class="mini-field"><span>Sätze</span><input data-k="sets" type="number" inputmode="numeric" min="1" value="${d.sets}"></label>
-        <label class="mini-field"><span>Wdh.</span><input data-k="reps" type="number" inputmode="numeric" min="1" value="${d.reps}"></label>
-        <label class="mini-field"><span>${ex.type === 'bodyweight' ? '+ kg' : 'kg'}</span><input data-k="weight" type="number" inputmode="decimal" step="0.5" min="0" value="${d.weight}"></label>
+      <div class="set-grid">
+        <span class="set-head">Satz</span><span class="set-head">Wdh.</span><span class="set-head">${ex.type === 'bodyweight' ? '+ kg' : 'kg'}</span>
+        ${rows}
+      </div>
+      <div class="set-actions">
+        <button class="set-action" data-act="add">+ Satz</button>
+        ${sets.length > 1 ? '<button class="set-action" data-act="remove">− Satz</button>' : ''}
       </div>`;
     main.querySelectorAll('input').forEach(input => {
-      input.addEventListener('input', () => { d[input.dataset.k] = input.value; });
+      input.addEventListener('input', () => {
+        sets[input.dataset.i][input.dataset.k] = input.value;
+        save();
+      });
+    });
+    // Neuer Satz übernimmt die Werte vom letzten Satz
+    main.querySelector('[data-act=add]').addEventListener('click', () => {
+      if (sets.length >= 20) return;
+      sets.push({ ...sets.at(-1) });
+      save();
+      renderSplitArea();
+    });
+    main.querySelector('[data-act=remove]')?.addEventListener('click', () => {
+      sets.pop();
+      save();
+      renderSplitArea();
     });
     btn.addEventListener('click', () => completeExercise(ex, day));
   }
@@ -443,17 +477,17 @@ function renderCheckRow(ex, day) {
 
 // Abhaken = die Sätze mit den eingetragenen Werten für heute speichern
 function completeExercise(ex, day) {
-  const d = draftFor(ex);
-  const count = parseInt(d.sets, 10);
-  const reps = parseInt(d.reps, 10);
-  const weight = Math.max(0, parseFloat(String(d.weight).replace(',', '.')) || 0);
-  if (!count || count < 1) return toast('Bitte Anzahl Sätze eingeben');
-  if (!reps || reps < 1) return toast('Bitte Wiederholungen eingeben');
+  const sets = draftFor(ex).map(s => ({
+    reps: parseInt(s.reps, 10),
+    weight: Math.max(0, parseFloat(String(s.weight).replace(',', '.')) || 0),
+  }));
+  const missing = sets.findIndex(s => !s.reps || s.reps < 1);
+  if (missing >= 0) return toast(`Bitte Wiederholungen bei Satz ${missing + 1} eingeben`);
   const date = localIso();
-  for (let i = 0; i < Math.min(count, 20); i++) {
-    state.sets.push({ id: uid(), exerciseId: ex.id, date, reps, weight, splitDayId: day.id });
-  }
-  delete drafts[ex.id];
+  sets.forEach(s => {
+    state.sets.push({ id: uid(), exerciseId: ex.id, date, reps: s.reps, weight: s.weight, splitDayId: day.id });
+  });
+  delete splitDrafts()[ex.id];
   save();
   const allDone = day.exerciseIds.map(exerciseById).filter(Boolean).every(e => todaySetsOf(e.id).length);
   toast(allDone ? 'Tag geschafft! 💪' : `${ex.name} erledigt`);

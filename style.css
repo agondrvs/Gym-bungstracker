@@ -267,6 +267,23 @@ svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width:
 .mini-field input::-webkit-outer-spin-button, .mini-field input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .mini-field input:focus { box-shadow: inset 0 0 0 1.5px var(--muted); }
 
+/* Satz-Tabelle im Split: Satz | Wdh. | kg */
+.set-grid { display: grid; grid-template-columns: 34px 1fr 1fr; gap: 6px 8px; align-items: center; margin-top: 10px; }
+.set-head { font-size: .7rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; text-align: center; }
+.set-no {
+  width: 28px; height: 28px; border-radius: 8px; background: var(--surface-2); color: var(--muted);
+  display: grid; place-items: center; font-size: .8rem; font-weight: 700; justify-self: center;
+}
+.set-grid input {
+  width: 100%; min-width: 0; font: inherit; font-size: 1.05rem; font-weight: 650; text-align: center; padding: 9px 4px;
+  border: none; border-radius: 10px; background: var(--surface-2); color: var(--text); outline: none;
+  -moz-appearance: textfield;
+}
+.set-grid input::-webkit-outer-spin-button, .set-grid input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.set-grid input:focus { box-shadow: inset 0 0 0 1.5px var(--muted); }
+.set-actions { display: flex; gap: 8px; margin-top: 8px; }
+.set-action { padding: 7px 12px; border-radius: 9px; font-size: .85rem; font-weight: 600; color: var(--muted); background: var(--surface-2); }
+
 .split-list-item .list-main { cursor: pointer; }
 #split-new { margin-bottom: 4px; }
 
