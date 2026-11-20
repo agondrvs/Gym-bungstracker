@@ -301,6 +301,17 @@ dialog.sheet[open] { display: flex; }
 .quick-add .segmented { margin: 10px 0 0; }
 .quick-add .btn-secondary { margin-top: 10px; }
 
+/* ===== Split teilen ===== */
+.import-card { margin-top: 12px; }
+.import-card .btn-secondary { margin-top: 10px; }
+textarea.text-input { resize: none; font-size: .9rem; line-height: 1.35; }
+.share h2 { margin: 0 0 6px; font-size: 1.15rem; }
+.share .muted { margin-bottom: 12px; line-height: 1.4; }
+.share textarea { font-size: .8rem; word-break: break-all; }
+.share .btn-primary { margin-top: 12px; }
+.share .btn-secondary { margin-top: 8px; }
+.share .link-btn { display: block; margin: 10px auto 0; }
+
 /* ===== Untere Leiste ===== */
 .tabbar {
   position: fixed; bottom: 0; left: 0; right: 0; display: flex; justify-content: center;

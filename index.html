@@ -155,6 +155,12 @@
       </div>
       <button class="btn-secondary" id="split-new">+ Neuer Split</button>
 
+      <div class="card import-card">
+        <label class="field-label" for="split-import-text">Split von jemandem bekommen? Link hier einfügen</label>
+        <textarea id="split-import-text" class="text-input" rows="2" placeholder="Link aus der Nachricht hier einfügen" autocomplete="off"></textarea>
+        <button class="btn-secondary" id="split-import-btn">Split übernehmen</button>
+      </div>
+
       <h3 class="section-title">Backup</h3>
       <div class="card">
         <p class="muted">Deine Daten sind nur auf diesem Gerät gespeichert. Sichere sie ab und zu.</p>
@@ -223,6 +229,15 @@
   </nav>
 
   <div class="toast" id="toast"></div>
+
+  <dialog id="share-dialog" class="share">
+    <h2 id="share-title">Split teilen</h2>
+    <p class="muted">Schick diesen Link an deinen Kollegen. Er öffnet ihn oder fügt ihn in seiner App unter „Übungen“ → „Split von jemandem bekommen?“ ein.</p>
+    <textarea id="share-link" class="text-input" rows="3" readonly></textarea>
+    <button class="btn-primary" id="share-native">Teilen …</button>
+    <button class="btn-secondary" id="share-copy">Link kopieren</button>
+    <button class="link-btn" id="share-close">Schließen</button>
+  </dialog>
 
   <dialog id="confirm-dialog">
     <p id="confirm-text"></p>

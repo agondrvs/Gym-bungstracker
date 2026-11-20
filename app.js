@@ -490,6 +490,12 @@ function renderSplitList() {
     edit.setAttribute('aria-label', 'Split bearbeiten');
     edit.innerHTML = ICON_EDIT;
     edit.addEventListener('click', () => openSplitEditor(sp.id));
+    const share = document.createElement('button');
+    share.className = 'icon-btn';
+    share.setAttribute('aria-label', 'Split teilen');
+    share.innerHTML = ICON_SHARE;
+    share.addEventListener('click', () => openShareDialog(sp));
+    li.appendChild(share);
     li.appendChild(edit);
     ul.appendChild(li);
   });
@@ -648,6 +654,133 @@ $('#split-new-exercise-btn').addEventListener('click', () => {
   renderSplitEditor();
   render();
 });
+
+// ----- Split teilen -----
+// Der ganze Split (Name, Tage, Wochentage, Übungen) steckt im Link hinter "#split=".
+// Gespeicherte Sätze und Gewichte werden NICHT mitgeschickt.
+const ICON_SHARE = '<svg viewBox="0 0 24 24"><path d="M12 15V3M8 7l4-4 4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
+const APP_URL = location.origin + location.pathname;
+
+const toBase64Url = text => btoa(String.fromCharCode(...new TextEncoder().encode(text)))
+  .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const fromBase64Url = code => new TextDecoder().decode(
+  Uint8Array.from(atob(code.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0)));
+
+function splitToCode(split) {
+  const exIds = [...new Set(split.days.flatMap(d => d.exerciseIds))].filter(exerciseById);
+  const data = {
+    v: 1,
+    n: split.name,
+    x: exIds.map(id => { const ex = exerciseById(id); return [ex.name, ex.type === 'bodyweight' ? 'b' : 'w']; }),
+    d: split.days.map(d => ({
+      n: d.name,
+      w: d.weekdays || [],
+      e: d.exerciseIds.map(id => exIds.indexOf(id)).filter(i => i >= 0),
+    })),
+  };
+  return toBase64Url(JSON.stringify(data));
+}
+
+// Liest einen geteilten Split und prüft alles genau (der Link kommt ja von außen)
+function codeToSplitData(code) {
+  const data = JSON.parse(fromBase64Url(code));
+  const text = (t, max) => { if (typeof t !== 'string' || !t.trim()) throw new Error(); return t.trim().slice(0, max); };
+  if (data?.v !== 1 || !Array.isArray(data.x) || !Array.isArray(data.d) || !data.d.length || data.d.length > 14) throw new Error();
+  const exercises = data.x.slice(0, 100).map(x => ({ name: text(x?.[0], 60), type: x?.[1] === 'b' ? 'bodyweight' : 'weight' }));
+  const days = data.d.map(d => ({
+    name: text(d?.n, 40),
+    weekdays: (Array.isArray(d?.w) ? d.w : []).filter(w => Number.isInteger(w) && w >= 0 && w <= 6),
+    exercises: (Array.isArray(d?.e) ? d.e : []).filter(i => Number.isInteger(i) && i >= 0 && i < exercises.length),
+  }));
+  return { name: text(data.n, 60), exercises, days };
+}
+
+function findSplitCode(text) {
+  const m = String(text).match(/split=([A-Za-z0-9_-]+)/);
+  return m ? m[1] : null;
+}
+
+let shareText = '';
+function openShareDialog(split) {
+  const link = `${APP_URL}#split=${splitToCode(split)}`;
+  shareText = `Hier ist mein Split „${split.name}“ für die Gym-App 💪\n${link}`;
+  $('#share-title').textContent = `„${split.name}“ teilen`;
+  $('#share-link').value = link;
+  $('#share-native').hidden = !navigator.share;
+  $('#share-dialog').showModal();
+}
+
+$('#share-native').addEventListener('click', async () => {
+  try {
+    await navigator.share({ text: shareText });
+    $('#share-dialog').close();
+  } catch (e) { /* Teilen abgebrochen */ }
+});
+
+$('#share-copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('#share-link').value);
+    $('#share-copy').textContent = 'Kopiert ✓';
+  } catch (e) {
+    // Falls Kopieren nicht erlaubt ist: Text markieren, damit man ihn selbst kopieren kann
+    $('#share-link').select();
+    $('#share-copy').textContent = 'Jetzt lange drücken → Kopieren';
+  }
+  setTimeout(() => { $('#share-copy').textContent = 'Link kopieren'; }, 2500);
+});
+
+$('#share-close').addEventListener('click', () => $('#share-dialog').close());
+
+// Geteilten Split übernehmen: Übungen mit gleichem Namen werden wiederverwendet, fehlende angelegt
+async function importSharedSplit(code) {
+  let data;
+  try {
+    data = codeToSplitData(code);
+  } catch (e) {
+    toast('Der Link ist ungültig oder unvollständig');
+    return false;
+  }
+  const dayList = data.days.map(d => d.name).join(' / ');
+  if (!(await confirmDialog(`Split „${data.name}“ übernehmen? (${data.days.length} ${data.days.length === 1 ? 'Tag' : 'Tage'}: ${dayList})`, 'Übernehmen'))) return false;
+  const ids = data.exercises.map(x => {
+    let ex = state.exercises.find(e => normalize(e.name) === normalize(x.name));
+    if (!ex) {
+      ex = { id: uid(), name: x.name, type: x.type };
+      state.exercises.push(ex);
+    }
+    return ex.id;
+  });
+  const split = {
+    id: uid(),
+    name: state.splits.some(s => s.name === data.name) ? `${data.name} (geteilt)` : data.name,
+    days: data.days.map(d => ({ id: uid(), name: d.name, weekdays: d.weekdays, exerciseIds: [...new Set(d.exercises.map(i => ids[i]))] })),
+  };
+  state.splits.push(split);
+  state.activeSplitId = split.id;
+  state.trainingMode = 'split';
+  selectedDayId = null;
+  save();
+  render();
+  toast(`Split „${split.name}“ übernommen 💪`);
+  return true;
+}
+
+$('#split-import-btn').addEventListener('click', async () => {
+  const code = findSplitCode($('#split-import-text').value);
+  if (!code) return toast('Kein Split-Link gefunden');
+  if (await importSharedSplit(code)) {
+    $('#split-import-text').value = '';
+    document.querySelector('.tabbar button[data-view=training]').click();
+  }
+});
+
+// App wurde über einen geteilten Link geöffnet
+function checkSharedLink() {
+  const code = findSplitCode(location.hash);
+  if (!code) return;
+  history.replaceState(null, '', location.pathname + location.search);
+  importSharedSplit(code);
+}
 
 // ---------- Kalender ----------
 const now = new Date();
@@ -978,6 +1111,8 @@ function render() {
 }
 if (selectedExerciseId) selectExercise(selectedExerciseId);
 render();
+checkSharedLink();
+window.addEventListener('hashchange', checkSharedLink);
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
